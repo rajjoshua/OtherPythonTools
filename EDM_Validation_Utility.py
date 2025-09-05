@@ -22,65 +22,57 @@ class ExcelSQLValidatorApp(QWidget):
         self.validation_results = []
         self.manual_sql_result_table = None
 
+        self.themes = ["Light", "Dark", "Blue"]
+        self.current_theme = 0  # Start with Light
+
         self.init_ui()
         self.apply_styles()
 
     def apply_styles(self):
-        # Set a modern, colorful stylesheet
-        self.setStyleSheet("""
-            QWidget {
-                background-color: #f4f8fb;
-                font-family: Segoe UI, Arial, sans-serif;
-                font-size: 13px;
-            }
-            QLabel#HeaderLabel {
-                font-size: 28px;
-                font-weight: bold;
-                color: #1a237e;
-                padding: 10px 0 20px 0;
-            }
-            QLabel {
-                color: #263238;
-                font-weight: bold;
-            }
-            QPushButton {
-                background-color: #0d47a1;
-                color: white;
-                border-radius: 6px;
-                padding: 8px 18px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QPushButton:disabled {
-                background-color: #b0bec5;
-                color: #eceff1;
-            }
-            QPushButton:hover {
-                background-color: #1565c0;
-            }
-            QTableWidget {
-                background-color: #ffffff;
-                border: 1px solid #90caf9;
-                font-size: 13px;
-            }
-            QHeaderView::section {
-                background-color: #1976d2;
-                color: white;
-                font-weight: bold;
-                font-size: 13px;
-                border: none;
-                padding: 6px;
-            }
-            QListWidget {
-                background-color: #e3f2fd;
-                border: 1px solid #90caf9;
-            }
-            QTextEdit {
-                background-color: #e3f2fd;
-                border: 1px solid #90caf9;
-                font-size: 13px;
-            }
-        """)
+        theme = self.themes[self.current_theme]
+        if theme == "Light":
+            self.setStyleSheet("""
+                QWidget { background-color: #f9fafb; font-family: Segoe UI, Arial, sans-serif; font-size: 13px; }
+                QLabel#HeaderLabel { font-size: 28px; font-weight: bold; color: #0d47a1; padding: 10px 0 20px 0; }
+                QLabel { color: #263238; font-weight: bold; }
+                QPushButton { background-color: #1565c0; color: #fff; border-radius: 6px; padding: 8px 18px; font-size: 14px; font-weight: bold; }
+                QPushButton:disabled { background-color: #b0bec5; color: #eceff1; }
+                QPushButton:hover { background-color: #1976d2; }
+                QTableWidget { background-color: #fff; border: 1px solid #90caf9; font-size: 13px; color: #263238; }
+                QHeaderView::section { background-color: #1565c0; color: #fff; font-weight: bold; font-size: 13px; border: none; padding: 6px; }
+                QListWidget { background-color: #e3f2fd; border: 1px solid #90caf9; color: #263238; }
+                QTextEdit { background-color: #e3f2fd; border: 1px solid #90caf9; font-size: 13px; color: #263238; }
+            """)
+        elif theme == "Dark":
+            self.setStyleSheet("""
+                QWidget { background-color: #181c24; color: #e0e0e0; font-family: Segoe UI, Arial, sans-serif; font-size: 13px; }
+                QLabel#HeaderLabel { font-size: 28px; font-weight: bold; color: #90caf9; padding: 10px 0 20px 0; }
+                QLabel { color: #b0bec5; font-weight: bold; }
+                QPushButton { background-color: #263859; color: #fff; border-radius: 6px; padding: 8px 18px; font-size: 14px; font-weight: bold; }
+                QPushButton:disabled { background-color: #616161; color: #bdbdbd; }
+                QPushButton:hover { background-color: #1976d2; }
+                QTableWidget { background-color: #23272e; border: 1px solid #90caf9; font-size: 13px; color: #e0e0e0; }
+                QHeaderView::section { background-color: #263859; color: #fff; font-weight: bold; font-size: 13px; border: none; padding: 6px; }
+                QListWidget { background-color: #23272e; border: 1px solid #90caf9; color: #e0e0e0; }
+                QTextEdit { background-color: #23272e; border: 1px solid #90caf9; font-size: 13px; color: #e0e0e0; }
+            """)
+        elif theme == "Blue":
+            self.setStyleSheet("""
+                QWidget { background-color: #eaf6fb; font-family: Segoe UI, Arial, sans-serif; font-size: 13px; }
+                QLabel#HeaderLabel { font-size: 28px; font-weight: bold; color: #01579b; padding: 10px 0 20px 0; }
+                QLabel { color: #01579b; font-weight: bold; }
+                QPushButton { background-color: #005792; color: #fff; border-radius: 6px; padding: 8px 18px; font-size: 14px; font-weight: bold; }
+                QPushButton:disabled { background-color: #b3e5fc; color: #eceff1; }
+                QPushButton:hover { background-color: #0288d1; }
+                QTableWidget { background-color: #fff; border: 1px solid #0288d1; font-size: 13px; color: #01579b; }
+                QHeaderView::section { background-color: #0288d1; color: #fff; font-weight: bold; font-size: 13px; border: none; padding: 6px; }
+                QListWidget { background-color: #b3e5fc; border: 1px solid #0288d1; color: #01579b; }
+                QTextEdit { background-color: #b3e5fc; border: 1px solid #0288d1; font-size: 13px; color: #01579b; }
+            """)
+
+    def switch_theme(self):
+        self.current_theme = (self.current_theme + 1) % len(self.themes)
+        self.apply_styles()
 
     def init_ui(self):
         main_layout = QVBoxLayout()
@@ -90,6 +82,11 @@ class ExcelSQLValidatorApp(QWidget):
         header_label.setObjectName("HeaderLabel")
         header_label.setAlignment(Qt.AlignCenter)
         main_layout.addWidget(header_label)
+
+        # --- Theme Switcher ---
+        theme_btn = QPushButton("Switch Theme")
+        theme_btn.clicked.connect(self.switch_theme)
+        main_layout.addWidget(theme_btn, alignment=Qt.AlignRight)
 
         # --- File Selection Area ---
         file_selection_group_layout = QHBoxLayout()
