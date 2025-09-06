@@ -198,6 +198,7 @@ class ExcelSQLValidatorApp(QWidget):
         self.manual_sql_input.setSizePolicy(self.manual_sql_input.sizePolicy().horizontalPolicy(), QSizePolicy.Expanding)
         left_sql_layout.addWidget(self.manual_sql_input)
         self.run_manual_sql_button = QPushButton("Run SQL")
+        self.run_manual_sql_button.setToolTip("Executes the selected SQL. If nothing is selected, runs the entire editor.")
         self.run_manual_sql_button.clicked.connect(self.run_manual_sql)
         left_sql_layout.addWidget(self.run_manual_sql_button)
         left_sql_layout.addStretch(1)
@@ -558,10 +559,15 @@ class ExcelSQLValidatorApp(QWidget):
         QMessageBox.information(self, "Cleared", "All loaded data and test cases have been cleared.")
 
     def run_manual_sql(self):
-        sql = self.manual_sql_input.toPlainText().strip()
+        # Get selected text, or all text if nothing is selected
+        sql = self.manual_sql_input.textCursor().selectedText()
+        if not sql.strip():
+            sql = self.manual_sql_input.toPlainText().strip()
+        else:
+            sql = sql.strip()
         self.manual_sql_result_table.clear()
         self.sql_status_label.setText("Query getting executed")
-        QApplication.processEvents()  # <-- Force UI update here
+        QApplication.processEvents()
         if not sql:
             self.sql_status_label.setText("Please enter a SQL query.")
             return
@@ -596,7 +602,7 @@ class ExcelSQLValidatorApp(QWidget):
             self.manual_sql_result_table.setRowCount(1)
             self.manual_sql_result_table.setHorizontalHeaderLabels(["Error"])
             self.manual_sql_result_table.setItem(0, 0, QTableWidgetItem(str(e)))
-            self.sql_status_label.setText(f"Error: {e}")
+            self.sql_status_label.setText(f"Error in SQL")
 
     def display_sql_result(self, rows, columns):
         self.manual_sql_result_table.setColumnCount(len(columns))
@@ -703,4 +709,4 @@ if __name__ == '__main__':
     db_mode = mode_dialog.exec_()
     ex = ExcelSQLValidatorApp(db_mode=db_mode)
     ex.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec_())    
