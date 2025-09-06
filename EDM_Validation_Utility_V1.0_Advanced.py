@@ -561,10 +561,10 @@ class ExcelSQLValidatorApp(QWidget):
     def run_manual_sql(self):
         # Get selected text, or all text if nothing is selected
         sql = self.manual_sql_input.textCursor().selectedText()
-        if not sql.strip():
+        if sql:
+            sql = sql.replace('\u2029', '\n').strip()
+        if not sql:
             sql = self.manual_sql_input.toPlainText().strip()
-        else:
-            sql = sql.strip()
         self.manual_sql_result_table.clear()
         self.sql_status_label.setText("Query getting executed")
         QApplication.processEvents()
@@ -674,6 +674,7 @@ class DBModeDialog(QDialog):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Choose Database Mode")
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)  # Remove "?" button
         self.selected_mode = "disk"
         layout = QVBoxLayout()
         layout.addWidget(QLabel(
@@ -691,22 +692,30 @@ class DBModeDialog(QDialog):
         layout.addWidget(self.ram_radio)
         layout.addWidget(self.disk_radio)
         ok_btn = QPushButton("OK")
-        ok_btn.clicked.connect(self.accept)
+        ok_btn.clicked.connect(self.on_accept)
         layout.addWidget(ok_btn)
         self.setLayout(layout)
 
-    def exec_(self):
-        super().exec_()
+    def closeEvent(self, event):
+        QApplication.quit()
+
+    def on_accept(self):
         if self.ram_radio.isChecked():
             self.selected_mode = "ram"
         else:
             self.selected_mode = "disk"
-        return self.selected_mode
+        self.accept()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     mode_dialog = DBModeDialog()
-    db_mode = mode_dialog.exec_()
-    ex = ExcelSQLValidatorApp(db_mode=db_mode)
-    ex.show()
-    sys.exit(app.exec_())    
+    result = QDialog.Rejected
+    db_mode = "disk"
+    result = mode_dialog.exec_()
+    if result == QDialog.Accepted:
+        db_mode = mode_dialog.selected_mode
+        ex = ExcelSQLValidatorApp(db_mode=db_mode)
+        ex.show()
+        sys.exit(app.exec_())
+    else:
+        sys.exit(0)
