@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QTextEdit, QLabel, QFileDialog, QListWidget, QAbstractItemView,
     QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView, QMenu, QDialog, QRadioButton,
-    QProgressDialog
+    QProgressDialog, QCheckBox
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QColor, QPalette
@@ -224,6 +224,10 @@ class ExcelSQLValidatorApp(QWidget):
         self.export_sql_output_button.clicked.connect(self.export_sql_output)
         button_row.addWidget(self.export_sql_output_button)
 
+        self.preview_query_builder_button = QPushButton("Preview Tables / Query Builder")
+        self.preview_query_builder_button.clicked.connect(self.open_table_preview_dialog)
+        button_row.addWidget(self.preview_query_builder_button)
+
         self.sql_status_label = QLabel("")
         button_row.addWidget(self.sql_status_label)
 
@@ -257,6 +261,9 @@ class ExcelSQLValidatorApp(QWidget):
             self.db_conn = sqlite3.connect(self.db_file_path)
             print("Connected to in-memory SQLite database.")
         else:
+            # Always start with a fresh DB file
+            if os.path.exists("edm_validation_temp.db"):
+                os.remove("edm_validation_temp.db")
             self.db_file_path = "edm_validation_temp.db"
             self.db_conn = sqlite3.connect(self.db_file_path)
             print("Connected to disk-based SQLite database: edm_validation_temp.db")
@@ -669,6 +676,21 @@ class ExcelSQLValidatorApp(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "Export Error", f"Could not export SQL output: {e}")
 
+    def open_table_preview_dialog(self):
+        if not self.db_conn:
+            QMessageBox.warning(self, "No Data", "No database loaded.")
+            return
+        dlg = TablePreviewDialog(self.db_conn, self)
+        if dlg.exec_() == QDialog.Accepted and dlg.selected_sql:
+            # Append the SQL at the end of the editor, not replace
+            current_text = self.manual_sql_input.toPlainText()
+            if current_text and not current_text.endswith('\n'):
+                current_text += '\n'
+            self.manual_sql_input.setPlainText(current_text + dlg.selected_sql + '\n')
+            # Move cursor to end
+            cursor = self.manual_sql_input.textCursor()
+            cursor.movePosition(cursor.End)
+            self.manual_sql_input.setTextCursor(cursor)
 
 class DBModeDialog(QDialog):
     def __init__(self):
@@ -705,6 +727,96 @@ class DBModeDialog(QDialog):
         else:
             self.selected_mode = "disk"
         self.accept()
+
+class TablePreviewDialog(QDialog):
+    def __init__(self, db_conn, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Table Preview & Query Builder")
+        self.setWindowFlags(self.windowFlags() | Qt.WindowMaximizeButtonHint)  # Allow maximize
+        self.db_conn = db_conn
+        self.selected_sql = None
+
+        layout = QVBoxLayout()
+        self.table_list = QListWidget()
+        cursor = db_conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        for row in cursor.fetchall():
+            self.table_list.addItem(row[0])
+        self.table_list.currentTextChanged.connect(self.show_preview)
+        layout.addWidget(QLabel("Select a table:"))
+        layout.addWidget(self.table_list)
+        self.preview_table = QTableWidget()
+        layout.addWidget(self.preview_table)
+        self.columns_layout = QVBoxLayout()
+        layout.addLayout(self.columns_layout)
+        self.where_input = QTextEdit()
+        self.where_input.setPlaceholderText("WHERE clause (optional, e.g. age > 30)")
+        layout.addWidget(self.where_input)
+        insert_btn = QPushButton("Insert SQL to Editor")
+        insert_btn.clicked.connect(self.insert_sql)
+        layout.addWidget(insert_btn)
+
+        # New button to copy column names
+        self.copy_columns_btn = QPushButton("Copy Column Names")
+        self.copy_columns_btn.clicked.connect(self.copy_column_names)
+        layout.addWidget(self.copy_columns_btn)
+
+        self.setLayout(layout)
+        self.column_checks = []
+
+    def show_preview(self, table_name):
+        cursor = self.db_conn.cursor()
+        try:
+            cursor.execute(f'SELECT * FROM "{table_name}" LIMIT 100')
+            rows = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+        except Exception:
+            rows = []
+            columns = []
+        self.preview_table.setColumnCount(len(columns))
+        self.preview_table.setHorizontalHeaderLabels(columns)
+        self.preview_table.setRowCount(len(rows))
+        for i, row in enumerate(rows):
+            for j, value in enumerate(row):
+                self.preview_table.setItem(i, j, QTableWidgetItem(str(value)))
+        # Show checkboxes for columns
+        for i in reversed(range(self.columns_layout.count())):
+            widget = self.columns_layout.itemAt(i).widget()
+            if widget:
+                widget.setParent(None)
+        self.column_checks = []
+        for col in columns:
+            cb = QCheckBox(col)
+            cb.setChecked(True)
+            self.columns_layout.addWidget(cb)
+            self.column_checks.append(cb)
+
+    def insert_sql(self):
+        table_item = self.table_list.currentItem()
+        if not table_item:
+            QMessageBox.warning(self, "No Table", "Please select a table.")
+            return
+        table = table_item.text()
+        columns = [cb.text() for cb in self.column_checks if cb.isChecked()]
+        if not columns:
+            QMessageBox.warning(self, "No Columns", "Please select at least one column.")
+            return
+        where = self.where_input.toPlainText().strip()
+        quoted_columns = ', '.join([f'"{col}"' for col in columns])
+        sql = f'SELECT {quoted_columns} FROM "{table}"'
+        if where:
+            sql += f' WHERE {where}'
+        self.selected_sql = sql
+        self.accept()
+
+    def copy_column_names(self):
+        columns = [self.preview_table.horizontalHeaderItem(i).text() for i in range(self.preview_table.columnCount())]
+        if columns:
+            quoted = ', '.join([f'"{col}"' for col in columns])
+            QApplication.clipboard().setText(quoted)
+            QMessageBox.information(self, "Copied", "Column names copied to clipboard.")
+        else:
+            QMessageBox.warning(self, "No Columns", "No columns to copy.")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
