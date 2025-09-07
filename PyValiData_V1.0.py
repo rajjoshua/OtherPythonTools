@@ -913,5 +913,4 @@ if __name__ == "__main__":
         sys.exit(0)
     ex = ExcelSQLValidatorApp(db_mode=db_mode)
     ex.show()
-
     sys.exit(app.exec_())
