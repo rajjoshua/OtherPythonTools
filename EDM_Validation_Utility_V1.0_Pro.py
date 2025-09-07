@@ -14,9 +14,6 @@ from PyQt5.QtWidgets import QSizePolicy
 import importlib
 import sys
 import ast
-if "validation_functions" in sys.modules:
-    importlib.reload(sys.modules["validation_functions"])
-validation_lib = importlib.import_module("validation_functions")
 
 class SQLWorker(QThread):
     result_ready = pyqtSignal(object, object)  # (rows, columns)
@@ -417,9 +414,6 @@ class ExcelSQLValidatorApp(QWidget):
         self.validation_results = []
         self.report_table.setRowCount(0) # Clear previous results
 
-        if not self.db_conn:
-            QMessageBox.warning(self, "No Data", "No Excel data files loaded. Please load data first.")
-            return
         if self.test_cases_df is None:
             QMessageBox.warning(self, "No Test Cases", "No test case file loaded. Please load test cases first.")
             return
@@ -429,17 +423,27 @@ class ExcelSQLValidatorApp(QWidget):
             QMessageBox.critical(self, "TC File Error", f"Test case file must contain columns: {', '.join(required_cols)}")
             return
 
-        cursor = self.db_conn.cursor()
-        total = len(self.test_cases_df)
+        needs_keywords = any(str(tc['Call Type']).strip().upper() == "KEYWORD" for _, tc in self.test_cases_df.iterrows())
+        validation_lib = None
+        keyword_lib_missing = False
+        if needs_keywords:
+            try:
+                import importlib
+                import sys
+                if "validation_functions" in sys.modules:
+                    importlib.reload(sys.modules["validation_functions"])
+                validation_lib = importlib.import_module("validation_functions")
+            except ModuleNotFoundError:
+                keyword_lib_missing = True
 
-        # --- Progress Dialog ---
+        total = len(self.test_cases_df)
         progress = QProgressDialog("Running validation...", "", 0, total, self)
         progress.setWindowTitle("Progress")
         progress.setWindowModality(Qt.WindowModal)
         progress.setMinimumDuration(0)
         progress.setValue(0)
         progress.show()
-        progress.setCancelButton(None) 
+        progress.setCancelButton(None)
 
         for index, tc in self.test_cases_df.iterrows():
             if progress.wasCanceled():
@@ -455,70 +459,79 @@ class ExcelSQLValidatorApp(QWidget):
 
             try:
                 if call_type == "SQL":
-                    cursor.execute(code)
-                    query_results = cursor.fetchall()
-                    actual_result_str = str(query_results)
-                    # --- Compare Actual vs. Expected (reuse your logic here) ---
-                    if "0 rows" in expected_result:
-                        if not query_results:
-                            status = "PASS"
-                        else:
-                            actual_result_str = f"{len(query_results)} rows found."
-                    elif expected_result.startswith("COUNT = "):
-                        expected_count = int(expected_result.split("=")[1].strip())
-                        actual_count = len(query_results)
-                        actual_result_str = f"COUNT = {actual_count}"
-                        if actual_count == expected_count:
-                            status = "PASS"
-                    elif expected_result.lower() == "no records":
-                        if not query_results:
-                            status = "PASS"
-                        else:
-                            actual_result_str = f"{len(query_results)} records found."
-                    elif expected_result.lower() == "records exist":
-                        if query_results:
-                            status = "PASS"
-                            actual_result_str = f"{len(query_results)} records exist."
-                        else:
-                            actual_result_str = "No records found."
-                    elif query_results and len(query_results) == 1 and len(query_results[0]) == 1:
-                        if str(query_results[0][0]).strip() == expected_result:
-                            status = "PASS"
-                            actual_result_str = str(query_results[0][0])
-                        else:
-                            actual_result_str = str(query_results[0][0])
+                    if not self.db_conn:
+                        status = "ERROR"
+                        actual_result_str = "N/A"
+                        error_details = "No data files loaded for SQL test case."
                     else:
-                        if actual_result_str == expected_result:
-                            status = "PASS"
+                        cursor = self.db_conn.cursor()
+                        cursor.execute(code)
+                        query_results = cursor.fetchall()
+                        actual_result_str = str(query_results)
+                        # --- Compare Actual vs. Expected (reuse your logic here) ---
+                        if "0 rows" in expected_result:
+                            if not query_results:
+                                status = "PASS"
+                            else:
+                                actual_result_str = f"{len(query_results)} rows found."
+                        elif expected_result.startswith("COUNT = "):
+                            expected_count = int(expected_result.split("=")[1].strip())
+                            actual_count = len(query_results)
+                            actual_result_str = f"COUNT = {actual_count}"
+                            if actual_count == expected_count:
+                                status = "PASS"
+                        elif expected_result.lower() == "no records":
+                            if not query_results:
+                                status = "PASS"
+                            else:
+                                actual_result_str = f"{len(query_results)} records found."
+                        elif expected_result.lower() == "records exist":
+                            if query_results:
+                                status = "PASS"
+                                actual_result_str = f"{len(query_results)} records exist."
+                            else:
+                                actual_result_str = "No records found."
+                        elif query_results and len(query_results) == 1 and len(query_results[0]) == 1:
+                            if str(query_results[0][0]).strip() == expected_result:
+                                status = "PASS"
+                                actual_result_str = str(query_results[0][0])
+                            else:
+                                actual_result_str = str(query_results[0][0])
                         else:
-                            error_details = f"Generic comparison failed. Actual: '{actual_result_str}', Expected: '{expected_result}'"
+                            if actual_result_str == expected_result:
+                                status = "PASS"
+                            else:
+                                error_details = f"Generic comparison failed. Actual: '{actual_result_str}', Expected: '{expected_result}'"
                 elif call_type == "KEYWORD":
-                    # Extract function name and arguments robustly
-                    code_stripped = code.strip()
-                    if "(" in code_stripped and code_stripped.endswith(")"):
-                        func_name = code_stripped[:code_stripped.index("(")].strip()
-                        args_str = code_stripped[code_stripped.index("("):].strip()
-                        args_tuple = ast.literal_eval(args_str) if args_str else ()
-                        if not isinstance(args_tuple, tuple):
-                            args_tuple = (args_tuple,)
+                    if keyword_lib_missing:
+                        status = "ERROR"
+                        actual_result_str = "N/A"
+                        error_details = "validation_functions.py not found."
                     else:
-                        func_name = code_stripped
-                        args_tuple = ()
-                    print(f"Looking for function: '{func_name}' in {validation_lib}")
-                    print("Available functions:", dir(validation_lib))
-                    if hasattr(validation_lib, func_name):
-                        func = getattr(validation_lib, func_name)
-                        try:
-                            result = func(self.db_conn, *args_tuple)
-                        except TypeError:
-                            result = func(*args_tuple)
-                        actual_result_str = str(result)
-                        if actual_result_str == expected_result:
-                            status = "PASS"
+                        code_stripped = code.strip()
+                        if "(" in code_stripped and code_stripped.endswith(")"):
+                            func_name = code_stripped[:code_stripped.index("(")].strip()
+                            args_str = code_stripped[code_stripped.index("("):].strip()
+                            args_tuple = ast.literal_eval(args_str) if args_str else ()
+                            if not isinstance(args_tuple, tuple):
+                                args_tuple = (args_tuple,)
                         else:
-                            error_details = f"Function returned '{actual_result_str}', expected '{expected_result}'"
-                    else:
-                        raise Exception(f"Function '{func_name}' not found in validation_functions.py")
+                            func_name = code_stripped
+                            args_tuple = ()
+                        if hasattr(validation_lib, func_name):
+                            func = getattr(validation_lib, func_name)
+                            try:
+                                result = func(self.db_conn, *args_tuple)
+                            except TypeError:
+                                result = func(*args_tuple)
+                            actual_result_str = str(result)
+                            if actual_result_str == expected_result:
+                                status = "PASS"
+                            else:
+                                error_details = f"Function returned '{actual_result_str}', expected '{expected_result}'"
+                        else:
+                            status = "ERROR"
+                            error_details = f"Function '{func_name}' not found in validation_functions.py"
                 else:
                     status = "ERROR"
                     error_details = f"Unknown Call Type: {call_type}"
