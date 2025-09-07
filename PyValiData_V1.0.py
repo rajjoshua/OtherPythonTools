@@ -44,7 +44,7 @@ class SQLWorker(QThread):
 class ExcelSQLValidatorApp(QWidget):
     def __init__(self, db_mode="disk"):
         super().__init__()
-        self.setWindowTitle("PyValiData - Excel SQL Validator")
+        self.setWindowTitle("PyValiData – Excel Data Validation Studio")
         self.setGeometry(100, 100, 1200, 800)
 
         self.db_conn = None
@@ -913,4 +913,5 @@ if __name__ == "__main__":
         sys.exit(0)
     ex = ExcelSQLValidatorApp(db_mode=db_mode)
     ex.show()
+
     sys.exit(app.exec_())
