@@ -46,7 +46,7 @@ class SQLWorker(QThread):
 class ExcelSQLValidatorApp(QWidget):
     def __init__(self, db_mode="disk"):
         super().__init__()
-        self.setWindowTitle("EDM Validation Utility")
+        self.setWindowTitle("Advanced EDM Validation Utility")
         self.setGeometry(100, 100, 1200, 800)
 
         self.db_conn = None
@@ -113,7 +113,7 @@ class ExcelSQLValidatorApp(QWidget):
         main_layout = QVBoxLayout()
 
         # --- Header ---
-        header_label = QLabel("EDM Validation Utility")
+        header_label = QLabel("Advanced EDM Validation Utility")
         header_label.setObjectName("HeaderLabel")
         header_label.setAlignment(Qt.AlignCenter)
         main_layout.addWidget(header_label)
